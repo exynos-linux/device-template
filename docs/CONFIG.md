@@ -115,7 +115,7 @@ installer menus). Missing ones default to the capitalised id.
 | `pages` | URL, derived | the release records: `https://<owner>.github.io/<name>` |
 | `public_key` | path | the signing key's public half (`scripts/new-signing-key`) |
 | `fingerprint` | 40 hex | its fingerprint (`scripts/new-signing-key` writes it) |
-| `channel_file` | derived | `/usr/lib/<device.id>/update-channel` in every image |
+| `channel_file` | path, derived | the file in every image that names its channel: `/usr/lib/<device.id>/update-channel` unless set (a port that shipped another path keeps it) |
 
 ## [bootchain]
 
@@ -155,8 +155,9 @@ The shared USB debug tool ([exynos-linux/usb-debug](https://github.com/exynos-li
 |---|---|---|
 | `ask` | bool | `./setup.sh` asks whether to install it, default yes; `false` installs without asking. `--debug-tools` / `--no-debug-tools` decide on the command line |
 | `remote` | https URL | where it comes from |
-| `version` | tag | pinned release; empty = the newest |
-| `setup` | derived | `<remote>/raw/<version, or main>/install.sh` |
+| `version` | tag | pinned release; empty = the main branch |
+| `sha256` | 64 hex | of install.sh: setup.sh checks it before running it; empty = no check |
+| `setup` | derived | `<remote>/releases/download/<version>/install.sh`, or `<remote>/raw/main/install.sh` without a version. Run as `sh install.sh --yes --device=<device.id> [--version=<v>]` |
 
 ## [console]
 

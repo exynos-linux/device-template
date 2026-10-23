@@ -52,7 +52,7 @@ jobs:
       - name: Tools
         run: |
           dnf install -yq git android-tools dosfstools util-linux mtools zstd lz4 \
-            gnupg2 python3 e2fsprogs which findutils diffutils procps-ng
+            gnupg2 python3 e2fsprogs which findutils diffutils procps-ng iproute openssl
       - uses: actions/checkout@v5
       - name: Installer tests
         run: |

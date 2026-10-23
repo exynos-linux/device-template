@@ -114,6 +114,9 @@ pages = ""
 public_key = "pmos/sysupdate-public-key.asc"
 # Its fingerprint, for humans and the installer (scripts/new-signing-key).
 fingerprint = ""
+# The file in every image that names its update channel.
+# derived: /usr/lib/<device.id>/update-channel
+channel_file = ""
 
 [bootchain]
 # A boot-chain payload release for the installer (bootchain/, ci/bootchain).
@@ -181,9 +184,12 @@ first_boot_extra_mib = 6528
 # it without asking. --debug-tools / --no-debug-tools decide on the command line.
 ask = true
 remote = "https://github.com/exynos-linux/usb-debug"
-# a release tag; "" = the newest
+# a release tag; "" = the main branch
 version = ""
-# derived: <remote>/raw/<version, or main>/install.sh
+# sha256 of install.sh: setup.sh checks it before running it ("" = no check)
+sha256 = ""
+# derived: <remote>/releases/download/<version>/install.sh, or
+# <remote>/raw/main/install.sh without a version
 setup = ""
 
 [console]
