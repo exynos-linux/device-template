@@ -1,0 +1,45 @@
+#!/bin/bash
+# Export the port's kernel branch into the kernel aport:
+#
+#   scripts/kernel-export [--src DIR] [--config FILE] BRANCH [BASE]
+#
+# DIR (default src/linux) is a clone of torvalds/linux with the port's
+# branch; BASE (default: the aport's _base) the upstream commit or tag it is
+# built on. Writes <codename>.patch = the whole difference BASE..BRANCH (one
+# patch: base + patch is exactly the branch's tree), sets _commit, _base and
+# pkgver (kernel version + commit date), bumps pkgrel, copies FILE (a full
+# .config) to config-<flavor>.aarch64, and recomputes the checksums.
+# Only after an on-device test of that exact tree; then commit and push.
+set -euo pipefail
+R=$(cd "$(dirname "$0")/.." && pwd)
+eval "$("$R/scripts/config" shell)"
+src=$R/src/linux config=
+while [ $# -gt 0 ]; do
+	case $1 in
+	--src) src=$2; shift 2 ;;
+	--config) config=$2; shift 2 ;;
+	-h|--help) sed -n '2,13p' "$0"; exit 0 ;;
+	*) break ;;
+	esac
+done
+branch=${1:?usage: scripts/kernel-export [--src DIR] [--config FILE] BRANCH [BASE]}
+A=$R/$CFG_KERNEL_APORT
+base=${2:-$(sed -n 's/^_base="\(.*\)"/\1/p' "$A/APKBUILD")}
+[ -n "$base" ] || { echo "no BASE given and _base is empty in $A/APKBUILD" >&2; exit 1; }
+commit=$(git -C "$src" rev-parse "$branch^{commit}")
+basec=$(git -C "$src" rev-parse "$base^{commit}")
+git -C "$src" merge-base --is-ancestor "$basec" "$commit" || { echo "$branch is not based on $base" >&2; exit 1; }
+if git -C "$src" diff --numstat "$basec" "$commit" | grep -q '^-'; then
+	echo "the branch changes binary files: abuild's patch cannot apply them" >&2
+	exit 1
+fi
+git -C "$src" diff --no-color --no-renames "$basec" "$commit" > "$A/$CFG_DEVICE_CODENAME.patch"
+[ -z "$config" ] || cp "$config" "$A/config-${CFG_KERNEL_PACKAGE#linux-}.aarch64"
+mk() { git -C "$src" show "$commit:Makefile" | sed -n "s/^$1 = //p" | head -1; }
+ver=$(mk VERSION).$(mk PATCHLEVEL).$(mk SUBLEVEL)
+date=$(git -C "$src" show -s --format=%cd --date=format:%Y%m%d "$commit")
+rel=$(sed -n 's/^pkgrel=//p' "$A/APKBUILD")
+sed -i -e "s/^pkgver=.*/pkgver=${ver}_git$date/" -e "s/^pkgrel=.*/pkgrel=$((rel + 1))/" \
+	-e "s/^_commit=.*/_commit=\"$commit\"/" -e "s/^_base=.*/_base=\"$basec\"/" "$A/APKBUILD"
+"$R/scripts/aport-checksum" "$A"
+echo "exported $branch (${commit:0:12}) on ${basec:0:12}: $(wc -l < "$A/$CFG_DEVICE_CODENAME.patch") patch lines"

@@ -1,0 +1,15 @@
+[Unit]
+Description=Import the vendor firmware the installer left on the ESP
+DefaultDependencies=no
+RequiresMountsFor=/boot /var/lib
+# before udev loads the drivers, so their first probe finds the firmware
+Before=systemd-udev-trigger.service
+After=systemd-remount-fs.service
+ConditionPathExists=/boot/@DEVICE_ID@-firmware.tar.zst
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/@DEVICE_ID@/firmware-import
+
+[Install]
+WantedBy=sysinit.target

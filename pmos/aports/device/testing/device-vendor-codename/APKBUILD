@@ -1,0 +1,67 @@
+# Reference: <https://postmarketos.org/devicepkg>
+#
+# The device package for Duranium. It must stay UI-neutral: anything for
+# one UI goes into a subpackage that installs itself with that UI
+# (install_if), so the same package serves every image (images.uis).
+# The USB debug layer is not a dependency: dev images add it
+# (images.dev_packages), release images leave it out.
+maintainer="@MAINTAINER@"
+pkgname=device-@DEVICE_ID@
+pkgdesc="@DEVICE_NAME@"
+pkgver=1
+pkgrel=0
+url="https://github.com/@REPO@"
+license="MIT"
+arch="aarch64"
+options="!check !archcheck !strip !tracedeps"
+depends="
+	$pkgname-initramfs=$pkgver-r$pkgrel
+	linux-postmarketos-@SOC@
+	postmarketos-base
+	systemd-boot
+	zstd
+	"
+makedepends="devicepkg-dev"
+subpackages="$pkgname-initramfs:initramfs"
+source="
+	deviceinfo
+	kernel-cmdline.conf
+	firmware-path.tmpfiles
+	firmware-import.sh
+	firmware-import.service
+	nested-gpt.rules
+	system-watchdog.conf
+	"
+
+build() {
+	devicepkg_build $startdir $pkgname
+}
+
+package() {
+	devicepkg_package $startdir $pkgname
+
+	# the owner's vendor firmware: imported from the ESP to the root
+	# partition (never in /usr, never in a published image)
+	install -Dm644 "$srcdir"/firmware-path.tmpfiles \
+		"$pkgdir"/usr/lib/tmpfiles.d/00-@DEVICE_ID@-firmware-path.conf
+	install -Dm755 "$srcdir"/firmware-import.sh \
+		"$pkgdir"/usr/libexec/@DEVICE_ID@/firmware-import
+	install -Dm644 "$srcdir"/firmware-import.service \
+		"$pkgdir"/usr/lib/systemd/system/@DEVICE_ID@-firmware-import.service
+	mkdir -p "$pkgdir"/usr/lib/systemd/system/sysinit.target.wants
+	ln -s ../@DEVICE_ID@-firmware-import.service \
+		"$pkgdir"/usr/lib/systemd/system/sysinit.target.wants/
+}
+
+initramfs() {
+	pkgdesc="$pkgdesc (initrd and early boot support)"
+	depends="kmod"
+
+	install -Dm644 "$srcdir"/nested-gpt.rules \
+		"$subpkgdir"/usr/lib/udev/rules.d/90-@DEVICE_ID@-nested-gpt.rules
+	install -Dm644 "$srcdir"/system-watchdog.conf \
+		"$subpkgdir"/usr/lib/systemd/system.conf.d/50-@DEVICE_ID@-watchdog.conf
+}
+
+sha512sums="
+"

@@ -1,0 +1,84 @@
+#!/bin/sh
+# Device hook, run at the end of duranium-build's top-level mkosi.finalize
+# (pmos/duranium/patches: before /etc moves into the base confext and
+# before the usr partition and its verity hash are made).
+#
+# Update server: the port publishes its own images (our kernel and drivers
+# on top of the postmarketOS packages), one GitHub release per channel:
+#
+#   <update.base><device.id>_<ui>_<release><suffix>/SHA256SUMS(.gpg)
+#
+# so sysupdate here must never fetch postmarketOS's generic images (they
+# carry no kernel for this device), and must only trust manifests signed
+# with the port's key:
+#
+#  - every sysupdate.d transfer that points at the postmarketOS image server
+#    points at the release of this image's channel instead
+#  - the sysupdate keyring holds only sysupdate-public-key.asc
+#
+# PORT_CHANNEL: "" (release images) or "dev" (development images with the
+# USB debug layer, channel suffix "-dev"). PORT_UPDATE_BASE overrides the
+# server (a local test server).
+set -eu
+
+HERE=$(cd "$(dirname "$0")" && pwd)
+# shellcheck source=/dev/null
+. "$HERE/config.env"
+BASE=${PORT_UPDATE_BASE:-$CFG_UPDATE_BASE}
+case "${PORT_CHANNEL:-}" in
+	"") suffix= ;;
+	dev) suffix=-dev ;;
+	*) echo "PORT_CHANNEL must be empty or dev, not '$PORT_CHANNEL'" >&2; exit 1 ;;
+esac
+
+n=0
+for t in "$BUILDROOT"/usr/lib/sysupdate.d/*.transfer; do
+	[ -f "$t" ] || continue
+	grep -qE '^Path=https://duranium\.(postmarketos\.org|nura\.eco)/images/' "$t" || continue
+	sed -i -E "s|^Path=https://duranium\.(postmarketos\.org\|nura\.eco)/images/(staging/)?([^/]+)/|Path=${BASE}\3${suffix}/|" "$t"
+	grep -q "^Path=${BASE}" "$t" || { echo "could not rewrite Path= in $t" >&2; exit 1; }
+	n=$((n + 1))
+done
+[ "$n" -gt 0 ] || { echo "no sysupdate transfer pointed at the postmarketOS server" >&2; exit 1; }
+echo "sysupdate: $n transfers -> ${BASE}%M_%W_%w${suffix}/"
+
+chdir=$(dirname "$CFG_UPDATE_CHANNEL_FILE")
+# duranium-set-channel only knows the postmarketOS server layout
+# (/images/ vs /images/staging/): here it would copy every transfer
+# unchanged into /etc/sysupdate.d, freezing them. Our channels are fixed per
+# image (release or -dev, see the channel file below).
+if [ -f "$BUILDROOT"/usr/bin/duranium-set-channel ]; then
+	cat > "$BUILDROOT"/usr/bin/duranium-set-channel <<EOF
+#!/bin/sh
+# $CFG_DEVICE_ID: one update channel per image ($CFG_PROJECT_REPO
+# releases), there is no staging channel. Prints the channel.
+set -eu
+. $CFG_UPDATE_CHANNEL_FILE
+case "\${1:-}" in
+"") echo "\$UPDATE_CHANNEL" ;;
+main) echo "\$UPDATE_CHANNEL" ;;
+*) echo "this device has no '\$1' channel; images follow \$UPDATE_CHANNEL" >&2; exit 1 ;;
+esac
+EOF
+	chmod 0755 "$BUILDROOT"/usr/bin/duranium-set-channel
+fi
+
+# A plain binary OpenPGP key file is a valid keyring for the gpg that
+# systemd-pull runs. Never "gpg --keyring X --import": a GnuPG 2.4 with a
+# fresh home (CI) keeps keys in keyboxd and silently ignores --keyring, and
+# the image then has no keyring at all (every update fails with "No OpenPGP
+# keyrings found").
+ring="$BUILDROOT"/usr/lib/systemd/import-pubring.pgp
+rm -f "$ring" "$ring~"
+gpg --dearmor < "$HERE"/sysupdate-public-key.asc > "$ring"
+chmod 0644 "$ring"
+gh=$(mktemp -d)
+n=$(GNUPGHOME=$gh gpg --batch --show-keys --with-colons "$ring" | grep -c '^pub' || true)
+rm -rf "$gh"
+[ "$n" = 1 ] || { echo "$ring must hold exactly one key, has $n" >&2; exit 1; }
+
+# which channel this image follows, for the installer, updates and humans
+mkdir -p "$BUILDROOT$chdir"
+printf 'UPDATE_BASE=%s\nUPDATE_CHANNEL=%s_%s_%s%s\n' "$BASE" \
+	"$PMOS_DEVICE" "$PMOS_VARIANT" "${RELEASE:-$CFG_IMAGES_RELEASE}" "$suffix" \
+	> "$BUILDROOT$CFG_UPDATE_CHANNEL_FILE"

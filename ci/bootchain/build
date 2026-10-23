@@ -1,0 +1,33 @@
+#!/bin/bash
+# Build the boot-chain payload the installer (./setup.sh) packs into each
+# owner's BOOT image, from public sources only:
+#
+#   ci/bootchain/build OUTDIR [VERSION]
+#
+# Output: OUTDIR/<device.codename>-bootchain_<VERSION>.tar.gz with, at its
+# root, what the installer's bootimg.sh expects (the port decides; the
+# exynos-linux layout, from the first port):
+#
+#   uniLoader-chain   loader -> U-Boot -> EFI (Duranium); the bring-up Linux
+#                     is the fallback after a failed chained boot
+#   uniLoader-linux   loader that always starts the bring-up Linux (the
+#                     installer's live environment, USB console on TCP 23)
+#   ramdisk.cpio.gz   the bring-up Linux's initramfs
+#   MANIFEST          versions and source commits (GPL: the sources' URLs)
+#
+# No Samsung file ever goes in: the owner's stock DTB and the AVB footer are
+# added on their PC by the installer. The device-specific steps live in
+# bootchain/build.sh (patch series in bootchain/<project>/ with BASE files);
+# this wrapper only checks the result.
+set -euo pipefail
+R=$(cd "$(dirname "$0")/../.." && pwd)
+OUT=$(mkdir -p "${1:?usage: ci/bootchain/build OUTDIR [VERSION]}" && cd "$1" && pwd)
+VER=${2:-$(date -u +%Y%m%d).0}
+eval "$("$R/scripts/config" shell)"
+[ "$CFG_BOOTCHAIN_ENABLED" = true ] || { echo "bootchain.enabled is false in config.toml" >&2; exit 1; }
+[ -x "$R/bootchain/build.sh" ] || { echo "no bootchain/build.sh" >&2; exit 1; }
+"$R/bootchain/build.sh" "$OUT" "$VER"
+tar=$OUT/${CFG_DEVICE_CODENAME}-bootchain_$VER.tar.gz
+[ -s "$tar" ] || { echo "bootchain/build.sh made no $tar" >&2; exit 1; }
+tar -tzf "$tar" | grep -qx 'MANIFEST' || { echo "$tar has no MANIFEST" >&2; exit 1; }
+echo "built $tar"

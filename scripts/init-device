@@ -1,0 +1,172 @@
+#!/usr/bin/env python3
+"""Turn a fresh copy of exynos-linux/device-template into a device port.
+
+    scripts/init-device --vendor samsung --codename gtactive5 \\
+        --soc exynos1380 --soc-name "Exynos 1380" \\
+        --name "Galaxy Tab Active5" --model SM-X306B [--model SM-X300] \\
+        [--vendor-name Samsung] [--form-factor tablet] \\
+        [--repo exynos-linux/samsung-gtactive5] [--maintainer "Name <mail>"]
+
+It writes those values into config.toml (comments kept), sets
+project.template = false, renames the template aports
+(device-vendor-codename, linux-postmarketos-exynosxxxx), replaces the
+@TOKEN@ placeholders in every tracked text file, recomputes the aports'
+checksums and runs scripts/config check. Run it once, in a clean tree, and
+commit the result. --dry-run shows what would change.
+"""
+import argparse
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+# documents the tokens themselves
+SKIP = {"scripts/init-device", "docs/PORTING.md", "docs/CONFIG.md"}
+
+
+def git_files():
+    out = subprocess.run(["git", "-C", str(ROOT), "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+                         check=True, capture_output=True).stdout.decode()
+    return [f for f in out.split("\0") if f]
+
+
+def line_comment(line):
+    """The comment after a one-line TOML value (with its leading spaces)."""
+    rhs = line.split("=", 1)[1].rstrip("\n")
+    s = rhs.lstrip()
+    lead = len(rhs) - len(s)
+    if s.startswith('"'):
+        i = 1
+        while i < len(s) and s[i] != '"':
+            i += 2 if s[i] == "\\" else 1
+        end = i + 1
+    elif s.startswith("["):
+        end = s.find("]") + 1 or len(s)
+    else:
+        end = len(s.split()[0]) if s.split() else 0
+    rest = rhs[lead + end:]
+    return rest if rest.strip().startswith("#") else ""
+
+
+def toml_set(text, section, key, value):
+    """Set key in [section] of a TOML text, keeping the line's comment."""
+    lines = text.splitlines(keepends=True)
+    cur = None
+    for i, line in enumerate(lines):
+        m = re.match(r"\s*\[([^\]]+)\]\s*$", line)
+        if m:
+            cur = m.group(1)
+            continue
+        if cur == section and re.match(rf"\s*{re.escape(key)}\s*=", line):
+            lines[i] = f"{key} = {value}{line_comment(line)}\n"
+            return "".join(lines)
+    raise SystemExit(f"config.toml has no {section}.{key}")
+
+
+def q(s):
+    return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--vendor", required=True)
+    ap.add_argument("--vendor-name")
+    ap.add_argument("--codename", required=True)
+    ap.add_argument("--soc", required=True)
+    ap.add_argument("--soc-name", required=True)
+    ap.add_argument("--name", required=True, help="marketing name, e.g. 'Galaxy Tab Active5'")
+    ap.add_argument("--model", action="append", required=True, help="model number (repeat for variants)")
+    ap.add_argument("--form-factor", default="tablet", choices=["tablet", "phone", "other"])
+    ap.add_argument("--repo", help="owner/name (default exynos-linux/<vendor>-<codename>)")
+    ap.add_argument("--maintainer", default="", help='"Name <mail>" for the aports')
+    ap.add_argument("--dry-run", action="store_true")
+    a = ap.parse_args()
+
+    for k in ("vendor", "codename", "soc"):
+        if not re.fullmatch(r"[a-z0-9]+", getattr(a, k)):
+            sys.exit(f"--{k} must be lower case letters and digits")
+    cfg = (ROOT / "config.toml").read_text()
+    if not re.search(r"^template\s*=\s*true", cfg, re.M):
+        sys.exit("config.toml: project.template is not true; this tree is already a port")
+    dev_id = f"{a.vendor}-{a.codename}"
+    repo = a.repo or f"exynos-linux/{dev_id}"
+    vendor_name = a.vendor_name or a.vendor.capitalize()
+    model = a.model[0]
+    fw = re.sub(r"^SM-", "", model)
+
+    sets = [
+        ("project", "template", "false"),
+        ("project", "repo", q(repo)),
+        ("project", "title", q(f"{vendor_name} {a.name}")),
+        ("device", "vendor", q(a.vendor)),
+        ("device", "codename", q(a.codename)),
+        ("device", "name", q(a.name)),
+        ("device", "models", "[" + ", ".join(q(m) for m in a.model) + "]"),
+        ("device", "form_factor", q(a.form_factor)),
+        ("device", "soc", q(a.soc)),
+        ("device", "soc_name", q(a.soc_name)),
+        ("device", "status", q("bring-up")),
+        ("android", "product_device", q(a.codename)),
+        ("android", "firmware_pattern", q(f"{fw}[A-Z0-9]{{8}}")),
+        ("android", "fus_model", q(model)),
+    ]
+    for s, k, v in sets:
+        cfg = toml_set(cfg, s, k, v)
+
+    tokens = {
+        "@VENDOR@": a.vendor, "@VENDOR_NAME@": vendor_name, "@CODENAME@": a.codename,
+        "@DEVICE_ID@": dev_id, "@SOC@": a.soc, "@SOC_NAME@": a.soc_name,
+        "@DEVICE_NAME@": f"{vendor_name} {a.name}", "@MODEL@": model, "@REPO@": repo,
+        "@MAINTAINER@": a.maintainer, "@FORM_FACTOR@": a.form_factor,
+    }
+    renames = [
+        ("pmos/aports/device/testing/device-vendor-codename", f"pmos/aports/device/testing/device-{dev_id}"),
+        ("pmos/aports/device/testing/linux-postmarketos-exynosxxxx", f"pmos/aports/device/testing/linux-postmarketos-{a.soc}"),
+    ]
+    edits = {}
+    for f in git_files():
+        if f in SKIP or f == "config.toml":
+            continue
+        p = ROOT / f
+        try:
+            t = p.read_text()
+        except (UnicodeDecodeError, IsADirectoryError, FileNotFoundError):
+            continue
+        n = re.sub(r"<!-- template:start.*?<!-- template:end -->\n", "", t, flags=re.S)
+        for k, v in tokens.items():
+            n = n.replace(k, v)
+        if n != t:
+            edits[f] = n
+
+    print(f"device {dev_id} ({a.soc_name}), repo {repo}")
+    print(f"config.toml: {len(sets)} values")
+    for f in sorted(edits):
+        print(f"edit   {f}")
+    for old, new in renames:
+        print(f"rename {old} -> {new}")
+    if a.dry_run:
+        return
+    (ROOT / "config.toml").write_text(cfg)
+    for f, t in edits.items():
+        (ROOT / f).write_text(t)
+    for old, new in renames:
+        if (ROOT / old).exists():
+            (ROOT / old).rename(ROOT / new)
+    for p in list(ROOT.rglob("*@CODENAME@*")):
+        p.rename(p.with_name(p.name.replace("@CODENAME@", a.codename)))
+    subprocess.run([str(ROOT / "scripts" / "aport-checksum"),
+                    f"pmos/aports/device/testing/device-{dev_id}", "pmos/aports/main/duranium-usb-debug"],
+                   check=True, cwd=ROOT)
+    subprocess.run([str(ROOT / "scripts" / "config"), "check"], check=True)
+    print(f"""
+Next (docs/PORTING.md):
+  1. scripts/new-signing-key, then add the SYSUPDATE_SIGNING_KEY secret
+  2. fill in the rest of config.toml (installer.*, android.tested_*)
+  3. the kernel: scripts/kernel-export once the device boots
+  4. git add -A && git commit -m "Port: {dev_id}"
+""")
+
+
+if __name__ == "__main__":
+    main()

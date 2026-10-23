@@ -1,0 +1,23 @@
+#!/bin/bash
+# Mark the committed pmos/ export (aports + duranium) as passed on the
+# device, so the next CI run also builds and publishes the public release
+# channels (until then only the -dev channels get it, as pre-releases).
+# Only after an on-device pass of exactly this export (docs/TESTPLAN.md).
+# Any later change to either goes to the -dev channels only until it is
+# verified again.
+#
+#   scripts/pmos-verify "boots, Wi-Fi/touch/GPU ok"   then commit + push
+set -euo pipefail
+P=$(cd "$(dirname "$0")/.." && pwd)
+eval "$("$P/scripts/config" shell)"
+[ -n "${1:-}" ] || { echo "usage: $0 'what passed on the device'" >&2; exit 1; }
+git -C "$P" diff --quiet HEAD -- pmos/aports pmos/duranium &&
+	[ -z "$(git -C "$P" ls-files --others --exclude-standard pmos/aports pmos/duranium)" ] ||
+	{ echo "commit the export first" >&2; exit 1; }
+aports=$(git -C "$P" rev-parse HEAD:pmos/aports)
+dtree=$(git -C "$P" rev-parse HEAD:pmos/duranium)
+kc=$(sed -n 's/^_commit="\(.*\)"/\1/p' "$P/$CFG_KERNEL_APORT/APKBUILD")
+# ci/state matches the first two fields
+printf 'aports=%s duranium=%s kernel=%s %s %s\n' "$aports" "$dtree" "${kc:0:12}" \
+	"$(date -u +%Y-%m-%d)" "$1" > "$P/pmos/VERIFIED"
+cat "$P/pmos/VERIFIED"

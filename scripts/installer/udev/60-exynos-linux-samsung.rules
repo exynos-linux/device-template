@@ -1,0 +1,7 @@
+# Samsung devices for the exynos-linux installers (./setup.sh): lets the
+# logged-in user reach the tablet without root, in Android (adb, 04e8:6860)
+# and in Download mode (heimdall, 04e8:685d); Samsung uses these ids on
+# every model. Our own Linux is a USB network gadget (1d6b:0104): no rule
+# needed for networking.
+SUBSYSTEM=="usb", ATTR{idVendor}=="04e8", ATTR{idProduct}=="6860", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTR{idVendor}=="04e8", ATTR{idProduct}=="685d", MODE="0660", TAG+="uaccess"

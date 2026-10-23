@@ -1,0 +1,259 @@
+# Build and publish the port's Duranium images.
+#
+# We maintain the kernel, the drivers and the device packages (pmos/).
+# Everything else is postmarketOS's: upstream duranium-build and pmaports at
+# their newest commit, the userspace from the postmarketOS binary
+# repositories. config.toml says what to build (images.uis x channels).
+#
+# The postmarketOS watcher: every 6 hours ci/state reads postmarketOS's
+# newest published Duranium version (upstream.version_url). A new version,
+# or a change to what we maintain, changes the fingerprint and starts a
+# build; otherwise the run ends after that one cheap job. Each channel is
+# one GitHub release, which is where the tablets' systemd-sysupdate looks
+# (signed SHA256SUMS).
+name: images
+
+on:
+  schedule:
+    - cron: "37 */6 * * *"
+  push:
+    branches: [main]
+    paths:
+      - "config.toml"
+      - "pmos/**"
+      - "ci/**"
+      - "!ci/pages"
+      - "!ci/bootchain/**"
+      - ".github/workflows/images.yml"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Build and publish even if nothing changed"
+        type: boolean
+        default: false
+      min_version:
+        description: "Publish a version above this one (YYMMDDNN), e.g. the newest local build the tablets run"
+        type: string
+        default: ""
+      try_release:
+        description: "Also build and check the release images of an unverified export (never published)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: images
+  cancel-in-progress: false
+
+# only the image jobs publish (releases, tags)
+permissions:
+  contents: read
+
+jobs:
+  state:
+    runs-on: ubuntu-24.04
+    outputs:
+      build: ${{ steps.s.outputs.build }}
+      version: ${{ steps.s.outputs.version }}
+      verified: ${{ steps.s.outputs.verified }}
+      upstream: ${{ steps.s.outputs.upstream }}
+      fingerprint: ${{ steps.s.outputs.fingerprint }}
+      matrix: ${{ steps.s.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v5
+      - run: scripts/config check
+      - id: s
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORCE: ${{ inputs.force && '1' || '' }}
+          # the input, else the repository variable (Settings > Variables)
+          MIN_VERSION: ${{ inputs.min_version || vars.MIN_VERSION }}
+        run: |
+          ci/state | tee -a "$GITHUB_OUTPUT"
+
+  packages:
+    needs: state
+    if: needs.state.outputs.build == 'yes'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    env:
+      WORK: ${{ github.workspace }}/build/work
+    outputs:
+      duranium_build: ${{ steps.prep.outputs.duranium_build }}
+      pmaports: ${{ steps.prep.outputs.pmaports }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: cfg
+        run: |
+          echo "device=$(scripts/config get device.id)" >> "$GITHUB_OUTPUT"
+          echo "kernel=$(scripts/config get kernel.package)" >> "$GITHUB_OUTPUT"
+          a=$(scripts/config get kernel.aport)
+          echo "aport=$a" >> "$GITHUB_OUTPUT"
+          echo "base=$(sed -n 's/^_base="\(.*\)"/\1/p' "$a/APKBUILD")" >> "$GITHUB_OUTPUT"
+      - id: prep
+        run: ci/prepare
+      - name: Kernel package cache
+        id: kcache
+        uses: actions/cache@v5
+        with:
+          path: kpkgs
+          key: kernel-${{ hashFiles(format('{0}/**', steps.cfg.outputs.aport), 'pmos/duranium/contrib/pkgbuilder.Containerfile') }}
+      - name: Upstream kernel source cache
+        if: steps.kcache.outputs.cache-hit != 'true' && steps.cfg.outputs.base != ''
+        uses: actions/cache@v5
+        with:
+          path: build/work/distfiles/linux-${{ steps.cfg.outputs.base }}.tar.gz
+          key: kernel-src-${{ steps.cfg.outputs.base }}
+      - name: Fetch the upstream kernel source
+        if: steps.kcache.outputs.cache-hit != 'true' && steps.cfg.outputs.base != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE: ${{ steps.cfg.outputs.base }}
+        run: |
+          # GitHub answers anonymous archive downloads from shared runner IPs
+          # with 429 Too Many Requests; fetch it authenticated, with retries,
+          # before abuild would (it finds it in SRCDEST and checks the hash)
+          set -eu
+          f=$WORK/distfiles/linux-$BASE.tar.gz
+          mkdir -p "$WORK/distfiles"
+          [ -s "$f" ] && { echo "cached: $f"; exit 0; }
+          for i in 1 2 3 4 5 6; do
+            if curl -fL --retry 3 --retry-delay 20 -H "Authorization: Bearer $GH_TOKEN" \
+              -o "$f.part" "https://github.com/torvalds/linux/archive/$BASE.tar.gz"; then
+              mv "$f.part" "$f"; ls -l "$f"; exit 0
+            fi
+            echo "attempt $i failed, waiting $((i * 60)) s"; sleep $((i * 60))
+          done
+          exit 1
+      - name: Build our packages
+        env:
+          KERNEL: ${{ steps.cfg.outputs.kernel }}
+          DEVICE: ${{ steps.cfg.outputs.device }}
+        run: |
+          set -eu
+          list=$(grep -v '^#' pmos/aports/BUILD)
+          if [ "${{ steps.kcache.outputs.cache-hit }}" = true ]; then
+            echo "::notice::kernel from cache: $(ls kpkgs)"
+            list=$(echo "$list" | grep -v "/$KERNEL\$")
+          fi
+          # shellcheck disable=SC2086
+          JOBS=$(nproc) sh "$WORK/duranium-build/contrib/$DEVICE/build-apks.sh" $list
+          if [ "${{ steps.kcache.outputs.cache-hit }}" = true ]; then
+            cp kpkgs/*.apk "$WORK/packages/"
+          else
+            mkdir -p kpkgs && cp "$WORK/packages/$KERNEL"-*.apk kpkgs/
+          fi
+          ls -l "$WORK/packages"
+      - name: Keep the trees for the image jobs
+        run: tar -C build -cf trees.tar work/duranium-build work/pmaports
+      - uses: actions/upload-artifact@v6
+        with:
+          name: packages
+          path: |
+            build/work/packages/*.apk
+            trees.tar
+          retention-days: 3
+
+  image:
+    needs: [state, packages]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    timeout-minutes: 300
+    env:
+      WORK: ${{ github.workspace }}/build/work
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.state.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Release channels only for a device-verified export
+        id: gate
+        run: |
+          if [ "${{ matrix.channel }}" = release ] && [ "${{ needs.state.outputs.verified }}" != yes ]; then
+            echo "publish=no" >> "$GITHUB_OUTPUT"
+            if [ "${{ inputs.try_release }}" = true ]; then
+              echo "::notice::pmos/ export not verified on the device: building and checking the ${{ matrix.ui }} release image, not publishing it"
+            else
+              echo "::notice::pmos/ export not verified on the device (pmos/VERIFIED): no ${{ matrix.ui }} release image this time, dev channel only"
+              echo "skip=yes" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+      - name: Free disk space
+        if: steps.gate.outputs.skip != 'yes'
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache \
+            /usr/local/share/boost /usr/share/swift "$AGENT_TOOLSDIRECTORY"
+          sudo docker system prune -af >/dev/null || true
+          df -h /
+      - name: arm64 emulation and user namespaces for mkosi
+        if: steps.gate.outputs.skip != 'yes'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -yq qemu-user-static binfmt-support erofs-utils
+          ls /proc/sys/fs/binfmt_misc/ | grep -i aarch64
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+      - uses: actions/download-artifact@v7
+        if: steps.gate.outputs.skip != 'yes'
+        with:
+          name: packages
+          path: dl
+      - name: Build the image
+        if: steps.gate.outputs.skip != 'yes'
+        env:
+          UI: ${{ matrix.ui }}
+          CHANNEL: ${{ matrix.channel }}
+        run: |
+          set -eu
+          mkdir -p build "$WORK/packages"
+          tar -C build -xf dl/trees.tar
+          cp dl/build/work/packages/*.apk "$WORK/packages/" 2>/dev/null || cp dl/*.apk "$WORK/packages/"
+          ln -sfn "$WORK/pmaports" "$WORK/duranium-build/pmaports"
+          echo "${{ needs.state.outputs.version }}" > "$WORK/duranium-build/mkosi.version"
+          SKIP_APKS=1 FRESH=1 sh "$WORK/duranium-build/contrib/$(scripts/config get device.id)/build-image.sh" --profile=compressed
+          ls -l "$WORK"/duranium-build/mkosi.output/*/
+      - name: Check the image (keyring, update channel, debug layer)
+        if: steps.gate.outputs.skip != 'yes'
+        run: |
+          tag=${{ matrix.tag }}
+          ci/check-image "$WORK/duranium-build/mkosi.output/${tag%-dev}" "${{ needs.state.outputs.version }}" "${{ matrix.channel }}" "$tag"
+      - name: Publish
+        if: github.ref == 'refs/heads/main' && steps.gate.outputs.skip != 'yes' && steps.gate.outputs.publish != 'no'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KEY: ${{ secrets.SYSUPDATE_SIGNING_KEY }}
+          UI: ${{ matrix.ui }}
+          CHANNEL: ${{ matrix.channel }}
+          TAG: ${{ matrix.tag }}
+          VERSION: ${{ needs.state.outputs.version }}
+          UPSTREAM: ${{ needs.state.outputs.upstream }}
+          VERIFIED: ${{ needs.state.outputs.verified }}
+          FINGERPRINT: ${{ needs.state.outputs.fingerprint }}
+          DURANIUM_BUILD: ${{ needs.packages.outputs.duranium_build }}
+          PMAPORTS: ${{ needs.packages.outputs.pmaports }}
+        run: |
+          set -eu
+          [ -n "$KEY" ] || { echo "::warning::no SYSUPDATE_SIGNING_KEY secret, not publishing"; exit 0; }
+          export GNUPGHOME=$(mktemp -d)
+          printf '%s\n' "$KEY" | gpg --batch --import
+          eval "$(scripts/config shell)"
+          pre=
+          [ "$CHANNEL" = dev ] && pre=prerelease
+          kernel=$(sed -n 's/^_commit="\(.*\)"/\1/p' "$CFG_KERNEL_APORT/APKBUILD")
+          base=${TAG%-dev}
+          title=$(scripts/config get "ui.$UI.title")
+          dev_note=
+          [ "$CHANNEL" = dev ] && dev_note=', development build with the USB debug layer (root over USB without a password: for development devices only)'
+          export NOTES="Update channel **$TAG** for the $CFG_DEVICE_NAME ($CFG_DEVICE_MODELS), postmarketOS Duranium, UI **$title**$dev_note.
+
+          Newest version: **$VERSION** (built $(date -u '+%Y-%m-%d %H:%M UTC')).
+
+          - Install image: \`${base}_${VERSION}.raw.zst\` (see docs/RELEASES.md)
+          - Installed devices update from this release (\`updatectl update\`, or the software centre)
+          - Kernel: $CFG_PROJECT_REPO \`${kernel:0:12}\`, postmarketOS Duranium base \`$UPSTREAM\`
+          - duranium-build \`$DURANIUM_BUILD\`, pmaports \`$PMAPORTS\`
+          - Vendor firmware is not included: the installer takes yours from your own stock firmware (docs/INSTALL.md)
+
+          Verified on the device: $VERIFIED
+
+          Fingerprint: \`$FINGERPRINT\`"
+          ci/publish "$TAG" "$WORK/duranium-build/mkosi.output/$base" "$VERSION" $pre

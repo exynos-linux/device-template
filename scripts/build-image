@@ -1,0 +1,52 @@
+#!/bin/bash
+# Local image build, the same steps as CI (images.yml):
+#
+#   scripts/build-image [--ui UI] [--channel dev|release] [--prepare] [-- mkosi args]
+#
+# ci/prepare (when build/work has no trees yet, or --prepare) puts upstream
+# duranium-build + our patches + contrib and upstream pmaports + our aports
+# into build/work; then contrib/<device.id>/build-image.sh builds the
+# packages and the image. Output: build/work/duranium-build/mkosi.output/.
+#
+# Local versions are <newest published + 1>~test<N> or what LOCAL_VERSION
+# says: "~" sorts below the plain version, so the next published update
+# replaces a test build (docs/RELEASES.md). Heavy steps take
+# build/work/build.lock, one at a time on this PC.
+set -euo pipefail
+R=$(cd "$(dirname "$0")/.." && pwd)
+eval "$("$R/scripts/config" shell)"
+ui=$CFG_IMAGES_DEFAULT_UI channel=dev prepare=
+while [ $# -gt 0 ]; do
+	case $1 in
+	--ui) ui=$2; shift 2 ;;
+	--channel) channel=$2; shift 2 ;;
+	--prepare) prepare=1; shift ;;
+	--) shift; break ;;
+	-h|--help) sed -n '2,14p' "$0"; exit 0 ;;
+	*) echo "unknown option $1" >&2; exit 1 ;;
+	esac
+done
+export WORK=${WORK:-$R/build/work}
+D=$WORK/duranium-build
+if [ -n "$prepare" ] || [ ! -d "$D/contrib/$CFG_DEVICE_ID" ]; then
+	"$R/ci/prepare"
+else
+	# keep the trees, refresh what we maintain
+	rm -rf "$D/contrib/$CFG_DEVICE_ID"
+	cp -r "$R/pmos/duranium/contrib" "$D/contrib/$CFG_DEVICE_ID"
+	cp "$R/$CFG_UPDATE_PUBLIC_KEY" "$D/contrib/$CFG_DEVICE_ID/sysupdate-public-key.asc"
+	"$R/scripts/config" shell > "$D/contrib/$CFG_DEVICE_ID/config.env"
+	"$R/scripts/config" channels > "$D/contrib/$CFG_DEVICE_ID/channels"
+	cp "$R/pmos/aports/BUILD" "$D/contrib/$CFG_DEVICE_ID/BUILD"
+	(cd "$R/pmos/aports" && find . -name APKBUILD -printf '%h\n') | while read -r a; do
+		rm -rf "$WORK/pmaports/${a#./}"
+		cp -r "$R/pmos/aports/${a#./}" "$WORK/pmaports/${a#./}"
+	done
+fi
+if [ -n "${LOCAL_VERSION:-}" ]; then
+	echo "$LOCAL_VERSION" > "$D/mkosi.version"
+elif [ ! -s "$D/mkosi.version" ]; then
+	echo "$(date -u +%y%m%d)00~test1" > "$D/mkosi.version"
+fi
+echo "== $CFG_DEVICE_ID $ui $channel, version $(cat "$D/mkosi.version")"
+UI=$ui CHANNEL=$channel sh "$D/contrib/$CFG_DEVICE_ID/build-image.sh" "$@"

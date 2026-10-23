@@ -1,0 +1,15 @@
+# third-party trees (kernel, U-Boot, loader clones; our changes are exported)
+/src/
+# build output (work trees, packages, images, ccache, locks)
+/build/
+# vendor firmware, stock images, decrypted files, keys: proprietary or
+# private, never commit
+/firmware/
+*.asc.secret
+signing-key.asc
+# installer state and logs on a developer PC
+/logs/
+__pycache__/
+# Claude Code runtime state
+/.claude/*.lock
+/.claude/settings.local.json

@@ -1,0 +1,75 @@
+#!/usr/bin/env python3
+"""Recompute sha512sums= of aports, like "abuild checksum", without abuild.
+
+    scripts/aport-checksum APORT-DIR...
+
+Local sources get a fresh sha512. A remote source (name::URL or a URL)
+keeps its existing line; when it has none, it is downloaded into
+build/work/distfiles (abuild's SRCDEST in our builds) and hashed there.
+"""
+import hashlib
+import re
+import subprocess
+import sys
+import urllib.request
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+DISTFILES = ROOT / "build" / "work" / "distfiles"
+
+
+def sources(d):
+    """(name, url-or-None) in order, as the shell expands $source."""
+    out = subprocess.run(["sh", "-c", '. ./APKBUILD >/dev/null 2>&1; for s in $source; do echo "$s"; done'],
+                         cwd=d, check=True, capture_output=True, text=True).stdout.split()
+    res = []
+    for s in out:
+        if "::" in s:
+            name, url = s.split("::", 1)
+        elif re.match(r"[a-z]+://", s):
+            name, url = s.rsplit("/", 1)[1], s
+        else:
+            name, url = s, None
+        res.append((name, url))
+    return res
+
+
+def main():
+    if len(sys.argv) < 2:
+        sys.exit(__doc__)
+    for arg in sys.argv[1:]:
+        d = Path(arg)
+        ap = d / "APKBUILD"
+        text = ap.read_text()
+        m = re.search(r'sha512sums="\n?(.*?)"', text, re.S)
+        if not m:
+            sys.exit(f"{ap}: no sha512sums=")
+        old = {}
+        for line in m.group(1).strip().splitlines():
+            parts = line.split()
+            if len(parts) == 2:
+                old[parts[1]] = parts[0]
+        lines = []
+        for name, url in sources(d):
+            if url is None:
+                h = hashlib.sha512((d / name).read_bytes()).hexdigest()
+            elif name in old:
+                h = old[name]
+            else:
+                f = DISTFILES / name
+                if not f.is_file():
+                    DISTFILES.mkdir(parents=True, exist_ok=True)
+                    print(f"download {url}", file=sys.stderr)
+                    urllib.request.urlretrieve(url, f)
+                h = hashlib.sha512(f.read_bytes()).hexdigest()
+            lines.append(f"{h}  {name}")
+        new = text[:m.start()] + 'sha512sums="\n' + "\n".join(lines) + '\n"' + text[m.end():]
+        if new != text:
+            ap.write_text(new)
+            print(f"{ap}: {len(lines)} checksums updated")
+        else:
+            print(f"{ap}: up to date")
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,44 @@
+# Every push and pull request: the config, the scripts and the offline
+# tests. Nothing here needs a device, a secret or the network beyond
+# apt and GitHub.
+name: check
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: sudo apt-get update -q && sudo apt-get install -yq shellcheck
+      - name: config.toml
+        run: scripts/config check
+      - name: Config reader tests
+        run: python3 -I tests/config/test_config.py
+      - name: Shell syntax and shellcheck
+        run: |
+          set -eu
+          # every tracked shell script: *.sh and anything with a sh/bash shebang
+          files=$(git ls-files | while read -r f; do
+            [ -f "$f" ] || continue
+            case $f in *.sh) echo "$f"; continue ;; esac
+            head -1 "$f" | grep -qE '^#!.*[/ ](ba)?sh$' && echo "$f"
+          done)
+          for f in $files; do bash -n "$f"; done
+          # shellcheck disable=SC2086
+          shellcheck -x -S warning $files
+      - name: Python syntax
+        run: |
+          git ls-files '*.py' ci/pages scripts/config | xargs -r python3 -m py_compile
+      - name: Installer tests
+        run: bash tests/installer/run.sh
+      - name: No unfilled template values in a port
+        run: |
+          [ "$(scripts/config get project.template)" = true ] && exit 0
+          ! git grep -nE '@(VENDOR|CODENAME|DEVICE_ID|SOC|MODEL|DEVICE_NAME)@' -- ':!docs/PORTING.md' ':!scripts/init-device'

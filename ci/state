@@ -1,0 +1,102 @@
+#!/bin/bash
+# Decide whether to build: print key=value lines for $GITHUB_OUTPUT.
+#
+#   upstream     postmarketOS's newest published Duranium version
+#                (upstream.version_url in config.toml: their image build)
+#   fingerprint  upstream + a hash of what we maintain and what makes the
+#                images (config.toml, pmos/, ci/, images.yml); stored in
+#                every release's notes
+#   verified     yes when pmos/VERIFIED names the exported aports and
+#                duranium trees: only then are the release (non-dev)
+#                channels built and published
+#   build        yes when a channel this run would publish does not carry
+#                this fingerprint yet (or FORCE=1); never for the template
+#   version      the next image version, YYMMDDNN: above every version any
+#                channel ever published and above MIN_VERSION (local builds
+#                that tablets run, so the next remote update replaces them)
+#   matrix       the image jobs (scripts/config matrix)
+#
+# This is the postmarketOS watcher: images.yml runs it on a schedule, and a
+# new upstream version changes the fingerprint, which starts a build.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+eval "$(scripts/config shell)"
+REPO=$CFG_PROJECT_REPO
+warn() { echo "::warning::$*" >&2; }
+
+# shellcheck disable=SC2016 # literal backquotes
+fp_of() { sed -n 's/^Fingerprint: `\(.*\)`$/\1/p' | head -1; }
+
+echo "matrix=$(scripts/config matrix)"
+if [ "$CFG_PROJECT_TEMPLATE" = true ]; then
+	echo "::notice::config.toml: project.template = true, nothing to build (scripts/init-device)" >&2
+	echo "build=no"
+	exit 0
+fi
+
+if ! grep -q '^_base="[0-9a-zA-Z.-]\+"' "$CFG_KERNEL_APORT/APKBUILD" 2>/dev/null; then
+	echo "::notice::no kernel yet ($CFG_KERNEL_APORT: _base is empty; scripts/kernel-export), nothing to build" >&2
+	echo "build=no"
+	exit 0
+fi
+
+verified=no
+aports=$(git rev-parse HEAD:pmos/aports)
+dtree=$(git rev-parse HEAD:pmos/duranium)
+if [ -f pmos/VERIFIED ] &&
+	grep -q "^aports=$aports duranium=$dtree " pmos/VERIFIED; then
+	verified=yes
+fi
+
+declare -A have
+max=0
+first_dev=
+while read -r ui ch tag; do
+	json=$(gh release view "$tag" -R "$REPO" --json body,assets 2>/dev/null || echo '{}')
+	have[$ui-$ch]=$(jq -r '.body // ""' <<<"$json" | fp_of)
+	[ "$ch" = dev ] && [ -z "$first_dev" ] && first_dev=$ui-$ch
+	for v in $(jq -r '.assets[]?.name' <<<"$json" | sed -n 's/.*_\([0-9]\{8\}\)\.efi$/\1/p'); do
+		[ "$v" -gt "$max" ] && max=$v
+	done
+done < <(scripts/config channels)
+
+if upstream=$(curl -fsSL --retry 3 "$CFG_UPSTREAM_VERSION_URL" | tr -dc 0-9) &&
+	[ ${#upstream} = 8 ]; then
+	:
+else
+	# their server is down: build on the base the last dev build used
+	upstream=$(sed -n 's|^pmos-\([0-9]\{8\}\)/.*|\1|p' <<<"${have[$first_dev]:-}")
+	[ -n "$upstream" ] || { echo "cannot read $CFG_UPSTREAM_VERSION_URL" >&2; exit 1; }
+	warn "postmarketOS version unreachable: assuming base $upstream"
+fi
+ours=$(git rev-parse HEAD:pmos)
+for f in config.toml ci .github/workflows/images.yml; do
+	ours="$ours-$(git rev-parse "HEAD:$f")"
+done
+fingerprint="pmos-$upstream/ours-$(echo "$ours" | sha256sum | cut -c1-16)"
+
+build=no
+while read -r ui ch _; do
+	[ "$ch" = release ] && [ $verified = no ] && continue
+	[ "${have[$ui-$ch]:-}" = "$fingerprint" ] || build=yes
+done < <(scripts/config channels)
+[ "${FORCE:-}" = 1 ] && build=yes
+
+floor=${MIN_VERSION:-0}
+[[ $floor =~ ^[0-9]{8}$ ]] || [ "$floor" = 0 ] || { echo "MIN_VERSION must be YYMMDDNN, not '$floor'" >&2; exit 1; }
+[ "$floor" -gt "$max" ] && max=$floor
+today=$(date -u +%y%m%d)
+if [ "${max:0:6}" -ge "$today" ]; then
+	# same day (or a floor ahead of today): next revision of that day
+	nn=$((10#${max:6:2} + 1))
+	[ "$nn" -le 99 ] || { echo "no revision left after $max" >&2; exit 1; }
+	version=${max:0:6}$(printf %02d "$nn")
+else
+	version=${today}01
+fi
+
+echo "upstream=$upstream"
+echo "verified=$verified"
+echo "fingerprint=$fingerprint"
+echo "build=$build"
+echo "version=$version"

@@ -1,0 +1,52 @@
+#!/bin/bash
+# Make the key pair that signs every update channel's SHA256SUMS:
+#
+#   scripts/new-signing-key [--force]
+#
+# Writes the public half to update.public_key (pmos/sysupdate-public-key.asc,
+# committed: the images trust exactly this key) and its fingerprint to
+# update.fingerprint in config.toml. The private half goes to
+# ~/.local/share/<project>/signing-key.asc (mode 0600) and NEVER into git:
+# put it into the repository secret SYSUPDATE_SIGNING_KEY
+#   gh secret set SYSUPDATE_SIGNING_KEY < ~/.local/share/<project>/signing-key.asc
+# and keep an offline copy. Without the private key no update can ever
+# reach installed devices again; a new key means every installed device must
+# be reinstalled (it trusts only the old one). Hence --force to replace one.
+set -euo pipefail
+R=$(cd "$(dirname "$0")/.." && pwd)
+eval "$("$R/scripts/config" shell)"
+pub=$R/$CFG_UPDATE_PUBLIC_KEY
+if [ -s "$pub" ] && [ "${1:-}" != --force ]; then
+	echo "$pub exists: installed devices trust it. --force makes a new one (they must then be reinstalled)" >&2
+	exit 1
+fi
+out=${XDG_DATA_HOME:-$HOME/.local/share}/$CFG_PROJECT_NAME
+mkdir -p "$out"
+chmod 700 "$out"
+GNUPGHOME=$(mktemp -d)
+export GNUPGHOME
+trap 'rm -rf "$GNUPGHOME"' EXIT
+# no passphrase: CI signs unattended; the secret store protects it
+gpg --batch --passphrase '' --quick-gen-key "$CFG_PROJECT_REPO image signing <noreply@$CFG_PROJECT_OWNER.invalid>" rsa4096 sign never
+fpr=$(gpg --batch --with-colons --list-keys | awk -F: '$1 == "fpr" { print $10; exit }')
+mkdir -p "$(dirname "$pub")"
+gpg --batch --armor --export "$fpr" > "$pub"
+(umask 077 && gpg --batch --armor --export-secret-keys "$fpr" > "$out/signing-key.asc")
+python3 -I - "$R/config.toml" "$fpr" <<'PY'
+import re, sys
+p, fpr = sys.argv[1:]
+s = open(p).read()
+s2 = re.sub(r'(?m)^(fingerprint\s*=\s*)"[^"]*"', rf'\g<1>"{fpr}"', s, count=1)
+assert s2 != s or f'"{fpr}"' in s, "no update.fingerprint line"
+open(p, "w").write(s2)
+PY
+"$R/scripts/config" check
+cat <<MSG
+public key:  $pub (commit it)
+fingerprint: $fpr (in config.toml)
+private key: $out/signing-key.asc (never commit it)
+
+  gh secret set SYSUPDATE_SIGNING_KEY -R $CFG_PROJECT_REPO < $out/signing-key.asc
+
+and keep an offline copy of $out/signing-key.asc.
+MSG

@@ -1,0 +1,4 @@
+# The adb function re-enumerates the debug gadget (unbind, add FunctionFS,
+# rebind) and adbd does not come up on every device: off by default
+# until it works on yours. "systemctl enable --now duranium-debug-adb" to try it.
+disable duranium-debug-adb.service

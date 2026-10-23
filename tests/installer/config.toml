@@ -1,0 +1,90 @@
+# A fictional device for the installer's test suite (tests/installer/run.sh
+# exports CONFIG=this file). Its values match the fake tablet in
+# tests/installer/lib.sh and mock/: change both together.
+
+schema = 1
+
+[project]
+template = false
+repo = "exynos-linux/test-testtab"
+title = "Test tablet (installer tests)"
+maintainers = ["@exynos-linux"]
+community = "https://example.invalid"
+license = "GPL-2.0-only"
+
+[device]
+vendor = "samsung"
+codename = "testtab"
+name = "Test Tab"
+models = ["SM-T999"]
+form_factor = "tablet"
+arch = "aarch64"
+soc = "exynos9999"
+soc_name = "Exynos 9999"
+status = "testing"
+
+[android]
+product_device = "testtab"
+firmware_pattern = "T999[A-Z0-9]{8}"
+tested_firmware = "T999XXS2AYA1"
+tested_bootloader_rev = "2"
+fus_model = ""
+userdata_f2fs_options = "-gandroid -Oencrypt,extra_attr,project_quota,quota,verity -t0 -ldata"
+userdata_f2fs_features = "0x499"
+
+[images]
+release = "edge"
+uis = ["phosh", "gnome"]
+default_ui = "phosh"
+extra_packages = []
+dev_packages = ["duranium-usb-debug"]
+debug_package_regex = "^duranium-usb-debug$"
+debug_file_regex = "duranium-usb-debug"
+
+[ui.phosh]
+title = "Phosh"
+
+[ui.gnome]
+title = "GNOME"
+
+[channels]
+dev = true
+release = true
+keep = 2
+
+[update]
+# the suite points every URL at its local server and trusts its own key
+# (SETUP_PAGES, SETUP_API, SETUP_DL, SETUP_TRUSTED_KEY/FPR)
+public_key = "tests/installer/no-such-key.asc"
+fingerprint = "0123456789ABCDEF0123456789ABCDEF01234567"
+
+[bootchain]
+enabled = true
+
+[installer]
+download_usb = "04e8:685d"
+flash_allow = ["BOOT", "RECOVERY"]
+boot_partition = "BOOT"
+recovery_partition = "RECOVERY"
+boot_partition_bytes = 61865984
+userdata_partition = "userdata"
+metadata_partition = "metadata"
+super_partition = "super"
+main_disk = "sda"
+sector_size = 4096
+backup_readonly = ["efs", "sec_efs"]
+protected = [
+  "bootloader", "bootloader2", "ul_keys", "ddi", "pit", "md5hdr", "efs",
+  "sec_efs", "param", "up_param", "bota", "keystorage", "steady", "uh",
+  "uhcfg", "blcmd", "radio", "cp_debug", "nad_refer", "persistent",
+  "keyrefuge", "keydata", "dqmdbg", "vbmeta", "vbmeta_samsung", "prism",
+  "optics", "omr", "spu", "cpefs", "cm", "misc", "dtbo",
+]
+# Android's names, as the default device_firmware_stage keeps them
+required_firmware = ["bcmdhd_sta.bin_b1", "bcmdhd_clm.blob", "nvram.txt_CS01_semco_b1"]
+firmware_exclude = ["fimc_is_*"]
+first_boot_extra_mib = 6528
+
+[console]
+port = 23
+shell_port = 2323
