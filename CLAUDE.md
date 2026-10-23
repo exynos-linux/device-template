@@ -16,7 +16,8 @@ postmarketOS, rebuilt automatically when postmarketOS publishes.
 Read first: `docs/AGENT-HANDOFF.md` (current state), `docs/STATUS.md`
 (what works, strictly), `docs/PLAN.md` (what comes next),
 `docs/STRUCTURE.md` (where everything is), `config.toml` (the port's
-public configuration). A new port starts with the `new-device` skill.
+public configuration). A new port starts with `/setup` (the `setup`
+skill).
 
 ## Commands
 
@@ -38,3 +39,4 @@ public configuration). A new port starts with the `new-device` skill.
 @.claude/rules/releases.md
 @.claude/rules/code.md
 @.claude/rules/firmware.md
+@.claude/rules/docs.md

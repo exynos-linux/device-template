@@ -48,7 +48,7 @@ afternoon; the kernel work after that is the real port.
 
 ## 2. Hardware map
 
-With Claude Code, the `new-device` skill does this step and the docs
+With Claude Code, the `setup` skill (`/setup`) does this step and the docs
 after it: it asks which device, researches it with parallel agents,
 offers the firmware snapshot and decompilation below, and writes
 `docs/HARDWARE.md`, `docs/PLAN.md`, `docs/STATUS.md`, the README and the
@@ -67,7 +67,15 @@ By hand ([FIRMWARE.md](FIRMWARE.md)):
 Fill `docs/HARDWARE.md` from their `SUMMARY.md` files and the `.dts`
 files, with a source per row, plus the PIT (`heimdall print-pit`).
 Samsung's GPL kernel source for the model (opensource.samsung.com) is the
-driver reference. Never commit Samsung binaries or decompiled code.
+driver reference, together with any existing port: LineageOS/TWRP trees,
+postmarketOS downstream or archived ports, earlier mainline attempts.
+Clone them into `src/` with their history (or read their files raw at a
+pinned commit), keep their GPL attribution in anything ported, and list
+them in `docs/PLAN.md` under "Starting points". A downstream-kernel
+postmarketOS image (pmaports `device/downstream/`) gives a USB shell
+within days to dump clocks, regulators and pins from a running system: a
+stepping stone, never a release (no GPU acceleration, no long-term
+updates). Never commit Samsung binaries or decompiled code.
 
 ## 3. Bring-up Linux
 

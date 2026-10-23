@@ -4,7 +4,7 @@ A port needs facts only the stock firmware has: the device tree, the
 partition table, which chips sit on which bus, which firmware files the
 drivers load, how the vendor HALs and DSP firmware talk to the hardware.
 Three scripts collect them on a developer PC. Coding agents drive them
-through the `new-device` and `firmware-re` skills, and ask the owner
+through the `setup` and `firmware-re` skills, and ask the owner
 before each run.
 
 | Script | Reads | Writes (config.toml `[firmware]`) |
