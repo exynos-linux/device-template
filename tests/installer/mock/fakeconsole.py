@@ -164,7 +164,7 @@ class H(socketserver.BaseRequestHandler):
                 return "run: exit 127 signal 0\n"
             for ln in script.splitlines():
                 if ln.startswith("# setup:"):
-                    name = ln[7:].strip()
+                    name = ln[len("# setup:"):].strip()
                     update(lambda st: st["log"].append("sh " + name))
                     return s.get("sh", {}).get(name, "") + "run: exit 0 signal 0\n"
             return "run: exit 0 signal 0\n"

@@ -155,8 +155,8 @@ t_stage1_unlocked_tablet_to_live() {
 	mode_is bringup
 	userdata_starts ANDROID-DATA
 	cmp "$CASE/st/stock/boot.img" "$RUN/fx/stock/boot.img" || fail "stock boot not saved"
-	tar -tf "$CASE/st/firmware/firmware.tar" | grep -qx 'bcmdhd_sta.bin_b1' || fail "no Wi-Fi firmware"
-	tar -tf "$CASE/st/firmware/firmware.tar" | grep -qx 'nfc/sec_s3nrn4v_firmware.bin' || fail "no NFC firmware"
+	tar -tf "$CASE/st/firmware/firmware.tar" | grep -x 'bcmdhd_sta.bin_b1' >/dev/null || fail "no Wi-Fi firmware"
+	tar -tf "$CASE/st/firmware/firmware.tar" | grep -x 'nfc/sec_s3nrn4v_firmware.bin' >/dev/null || fail "no NFC firmware"
 	tar -tf "$CASE/st/firmware/firmware.tar" | grep -q fimc_is && fail "excluded (installer.firmware_exclude) files packed"
 	# the BOOT image: our uniLoader + the stock DTB, header like the stock one
 	python3 -I "$REPO/scripts/installer/py/bootimg.py" info "$ROOT/dev/sda12" | grep -q '^BI_BOARD=SRPTF17A015$' || fail "board"
@@ -173,7 +173,7 @@ t_stage1_firmware_from_ap_when_adb_cannot_read() {
 	setup live --yes --stock-ap "$AP_TAR" --payload "$PAYLOAD_DIR"
 	rc_is 0
 	out_has "reading the firmware out of"
-	tar -tf "$CASE/st/firmware/firmware.tar" | grep -qx 'bcm4375B1_semco_sem.hcd' || fail "no BT firmware"
+	tar -tf "$CASE/st/firmware/firmware.tar" | grep -x 'bcm4375B1_semco_sem.hcd' >/dev/null || fail "no BT firmware"
 }
 
 t_stage1_firmware_from_live_super() {
@@ -183,7 +183,7 @@ t_stage1_firmware_from_live_super() {
 	rc_is 0
 	out_has "the firmware will be read in the live environment"
 	out_has "reading the firmware out of Android's super partition on the tablet"
-	tar -tf "$CASE/st/firmware/firmware.tar" | grep -qx 'nvram.txt_CS01_semco_b1' || fail "no nvram"
+	tar -tf "$CASE/st/firmware/firmware.tar" | grep -x 'nvram.txt_CS01_semco_b1' >/dev/null || fail "no nvram"
 	no_violation
 }
 
@@ -399,7 +399,7 @@ t_install_duranium_dev_image() {
 	MTOOLS_SKIP_CHECK=1 mcopy -i "$CASE/esp.img" ::/samsung-testtab-firmware.tar.zst.sha256 "$CASE/fw.sha256"
 	cmp "$CASE/fw.tar.zst" "$CASE/st/firmware/samsung-testtab-firmware.tar.zst" || fail "firmware on the ESP differs"
 	(cd "$CASE" && sed 's/ samsung-testtab-firmware.tar.zst$/ fw.tar.zst/' fw.sha256 | sha256sum -c --quiet) || fail "ESP .sha256 does not match"
-	zstd -dc "$CASE/fw.tar.zst" | tar -t | grep -qx 'bcmdhd_sta.bin_b1' || fail "tar layout"
+	zstd -dc "$CASE/fw.tar.zst" | tar -t | grep -x 'bcmdhd_sta.bin_b1' >/dev/null || fail "tar layout"
 	zstd -dc "$CASE/fw.tar.zst" | tar -t | grep -q '^\./\|/$' && fail "tar has ./ or directory entries"
 	grep -q 'fw-to-tablet' "$CASE/state.json.calls" || fail "dev image: firmware not pushed"
 	no_violation
@@ -653,4 +653,15 @@ t_prepare_builds_boot_images_without_tablet() {
 	python3 -I "$REPO/scripts/installer/py/bootimg.py" find "$CASE/st/boot/boot-linux.img" FAKE-UNILOADER-LINUX || fail "linux image"
 	[ -s "$CASE/st/firmware/firmware.tar" ] || fail "firmware not packed"
 	log_lacks flash
+}
+
+t_prepare_refuses_unknown_boot_partition_size() {
+	new_tablet off; start_console
+	sed -e 's/^boot_partition_bytes = .*/boot_partition_bytes = 0/' "$CONFIG" > "$CASE/config.toml"
+	mkdir -p "$CASE/fw"
+	for f in bcmdhd_sta.bin_b1 bcmdhd_clm.blob nvram.txt_CS01_semco_b1; do echo x > "$CASE/fw/$f"; done
+	CONFIG=$CASE/config.toml setup prepare --yes --stock-boot "$RUN/fx/stock/boot.img.lz4" --payload "$PAYLOAD_DIR" --firmware-dir "$CASE/fw"
+	rc_is 1
+	out_has "installer.boot_partition_bytes is not set"
+	[ ! -e "$CASE/st/boot/boot-linux.img" ] || fail "a boot image was built"
 }
