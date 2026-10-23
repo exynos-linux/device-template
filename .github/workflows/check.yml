@@ -25,7 +25,8 @@ jobs:
         run: |
           set -eu
           # every tracked shell script: *.sh and anything with a sh/bash shebang
-          files=$(git ls-files | while read -r f; do
+          # not the vendored U-Boot and uniLoader trees: they have their own checks
+          files=$(git ls-files -- . ':!bootchain/u-boot' ':!bootchain/uniLoader' | while read -r f; do
             [ -f "$f" ] || continue
             case $f in *.sh) echo "$f"; continue ;; esac
             head -1 "$f" | grep -qE '^#!.*[/ ](ba)?sh$' && echo "$f"
@@ -35,7 +36,8 @@ jobs:
           shellcheck -x -S warning $files
       - name: Python syntax
         run: |
-          git ls-files '*.py' ci/pages scripts/config | xargs -r python3 -m py_compile
+          git ls-files -- '*.py' ':!bootchain/u-boot' ':!bootchain/uniLoader' | xargs -r python3 -m py_compile
+          for f in ci/pages scripts/config scripts/init-device scripts/aport-checksum; do python3 -m py_compile "$f"; done
       - name: Installer tests
         run: bash tests/installer/run.sh
       - name: No unfilled template values in a port
