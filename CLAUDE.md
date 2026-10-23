@@ -17,7 +17,8 @@ Read first: `docs/AGENT-HANDOFF.md` (current state), `docs/STATUS.md`
 (what works, strictly), `docs/PLAN.md` (what comes next),
 `docs/STRUCTURE.md` (where everything is), `config.toml` (the port's
 public configuration). A new port starts with `/setup` (the `setup`
-skill).
+skill); `/status` reports where the port stands and `/continue` picks up
+the next priority from it into the build loop.
 
 ## Commands
 

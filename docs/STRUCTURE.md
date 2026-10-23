@@ -12,6 +12,8 @@ README.md  LICENSE  CLAUDE.md
   rules/                  rules for coding agents, loaded with CLAUDE.md
   skills/build-loop/      the build, flash and test loop, as a skill
   skills/setup/           /setup: a new port: research, starting trees, firmware, the first docs
+  skills/status/          /status: where the port stands, from the docs, git and CI
+  skills/continue/        /continue: the next priority from /status, into the build loop
   skills/firmware-re/     stock firmware facts and reverse engineering
 .github/workflows/
   check.yml               config, shell, Python and installer tests (every push / PR)
