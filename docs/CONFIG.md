@@ -64,6 +64,8 @@ What the installer checks on stock Android.
 | `tested_firmware` | string | the firmware the boot chain was tested on (warning on others) |
 | `tested_bootloader_rev` | string | its bootloader revision |
 | `fus_model` | string | model for Samsung's firmware server download; empty = not offered |
+| `userdata_f2fs_options` | string, ≤ 5 words | `mkfs.f2fs` options that recreate stock userdata for `restore-android`; empty = refused |
+| `userdata_f2fs_features` | hex | the stock f2fs superblock feature word, e.g. `0x499`; set together with the options |
 
 ## [kernel]
 
@@ -121,6 +123,11 @@ installer menus). Missing ones default to the capitalised id.
 |---|---|---|
 | `enabled` | bool | build and publish the boot-chain payload (`bootchain/build.sh`) |
 | `tag` | derived | `<device.id>_bootchain` |
+| `u_boot_defconfig` | derived | `<codename>_defconfig` in `bootchain/u-boot/configs/` |
+| `uniloader_defconfig` | derived | `<codename>_chain_defconfig` in `bootchain/uniLoader/configs/` |
+| `dtb` | derived | `exynos/<soc>-<codename>.dtb`, the bring-up Linux's DTB |
+| `bringup_config` | path | the bring-up kernel's config fragment (`bootchain/bringup.config`) |
+| `f2fs` | bool | mkfs.f2fs in the bring-up initramfs (for `restore-android`) |
 
 ## [installer]
 
@@ -131,11 +138,25 @@ installer menus). Missing ones default to the capitalised id.
 | `flash_allow` | list | PIT names heimdall may ever write (never a protected one) |
 | `boot_partition`, `recovery_partition` | PIT names | |
 | `userdata_partition`, `metadata_partition`, `super_partition` | GPT names | as the live environment sees them |
-| `main_disk` | string | the main storage's whole disk in the live environment (`sda`); only its partitions are touched |
+| `main_disk` | string | the main storage's whole disk in the live environment (`sda`, `mmcblk0`); only its partitions are touched |
+| `boot_partition_bytes` | int | BOOT's size from the PIT, for the AVB footer; 0 = the installer builds no boot images |
+| `sector_size` | 512 or 4096 | logical sector size of the main storage and the image's GPT |
+| `backup_readonly` | list | partitions copied read-only into the Android backup, never written back (`efs`, `sec_efs`) |
 | `protected` | list, lower case | partitions nothing may ever write. Extend, never shorten |
 | `required_firmware` | list | firmware paths (under /lib/firmware) without which the installer stops |
 | `firmware_exclude` | list of globs | left out of the firmware bundle |
 | `first_boot_extra_mib` | int | space the first boot adds on top of the image (second /usr slot + root minimum) |
+
+## [debug_tool]
+
+The shared USB debug tool ([exynos-linux/usb-debug](https://github.com/exynos-linux/usb-debug)): root console over USB, the host CLI.
+
+| Key | Type | Meaning |
+|---|---|---|
+| `ask` | bool | `./setup.sh` asks whether to install it, default yes; `false` installs without asking. `--debug-tools` / `--no-debug-tools` decide on the command line |
+| `remote` | https URL | where it comes from |
+| `version` | tag | pinned release; empty = the newest |
+| `setup` | derived | `<remote>/raw/<version, or main>/install.sh` |
 
 ## [console]
 

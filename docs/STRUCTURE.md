@@ -40,7 +40,7 @@ pmos/
   duranium/patches/ BASE  generic duranium-build hooks
   duranium/contrib/       the port's image build layer (-> contrib/<id>/)
   sysupdate-public-key.asc  VERIFIED
-bootchain/                BOOT payload build (build.sh + patch series), optional
+bootchain/                BOOT payload: build.sh, the vendored u-boot/ and uniLoader/
 initramfs/                bring-up Linux init (nolibc), optional
 docs/                     this, CONFIG, PORTING, RELEASES, INSTALL, STATUS,
                           HARDWARE, TESTPLAN, AGENT-HANDOFF

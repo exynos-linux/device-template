@@ -120,6 +120,17 @@ fingerprint = ""
 enabled = false
 # derived: <device.id>_bootchain
 tag = ""
+# The board in the vendored trees (bootchain/build.sh).
+# derived: <codename>_defconfig (bootchain/u-boot/configs/)
+u_boot_defconfig = ""
+# derived: <codename>_chain_defconfig (bootchain/uniLoader/configs/)
+uniloader_defconfig = ""
+# derived: exynos/<soc>-<codename>.dtb (the bring-up Linux's DTB)
+dtb = ""
+# The bring-up kernel's config fragment (merged onto allnoconfig).
+bringup_config = "bootchain/bringup.config"
+# mkfs.f2fs (Alpine aarch64) in the bring-up initramfs, for restore-android.
+f2fs = true
 
 [installer]
 # derived: <device.codename>-setup (state, cache and backup directory names)
@@ -163,6 +174,17 @@ firmware_exclude = []
 # Space the first boot adds on top of the image (second /usr slot + root
 # minimum), in MiB.
 first_boot_extra_mib = 6528
+
+[debug_tool]
+# The shared USB debug tool (root console over USB, the tab CLI):
+# ./setup.sh asks whether to install it (default yes); ask = false installs
+# it without asking. --debug-tools / --no-debug-tools decide on the command line.
+ask = true
+remote = "https://github.com/exynos-linux/usb-debug"
+# a release tag; "" = the newest
+version = ""
+# derived: <remote>/raw/<version, or main>/install.sh
+setup = ""
 
 [console]
 # The USB debug console (bring-up Linux and dev images), over USB NCM.

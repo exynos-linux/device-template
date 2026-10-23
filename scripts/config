@@ -32,7 +32,7 @@ def load():
     with open(PATH, "rb") as f:
         c = tomllib.load(f)
     for s in ("project", "device", "android", "kernel", "images", "ui", "channels",
-              "upstream", "update", "bootchain", "installer", "console"):
+              "upstream", "update", "bootchain", "installer", "console", "debug_tool"):
         c.setdefault(s, {})
     p, d, u = c["project"], c["device"], c["update"]
     if os.environ.get("GITHUB_REPOSITORY"):
@@ -55,6 +55,12 @@ def load():
     u["channel_file"] = f"/usr/lib/{d['id']}/update-channel"
     c["bootchain"].setdefault("enabled", False)
     c["bootchain"]["tag"] = c["bootchain"].get("tag") or f"{d['id']}_bootchain"
+    bc = c["bootchain"]
+    bc["u_boot_defconfig"] = bc.get("u_boot_defconfig") or f"{d.get('codename', '')}_defconfig"
+    bc["uniloader_defconfig"] = bc.get("uniloader_defconfig") or f"{d.get('codename', '')}_chain_defconfig"
+    bc["dtb"] = bc.get("dtb") or f"exynos/{d.get('soc', '')}-{d.get('codename', '')}.dtb"
+    bc.setdefault("bringup_config", "bootchain/bringup.config")
+    bc.setdefault("f2fs", True)
     c["installer"]["name"] = c["installer"].get("name") or f"{d.get('codename', '')}-setup"
     im = c["images"]
     im.setdefault("release", "edge")
@@ -65,6 +71,13 @@ def load():
         t = c["ui"].setdefault(ui, {})
         t.setdefault("title", ui.capitalize())
         t.setdefault("description", "")
+    dt = c["debug_tool"]
+    # setup.sh offers the shared USB debug tool (root console over USB, the
+    # tab CLI) from this remote; ask = false installs it without asking
+    dt.setdefault("ask", True)
+    dt["remote"] = (dt.get("remote") or "https://github.com/exynos-linux/usb-debug").rstrip("/")
+    dt.setdefault("version", "")
+    dt["setup"] = dt.get("setup") or f"{dt['remote']}/raw/{dt['version'] or 'main'}/install.sh"
     ch = c["channels"]
     ch.setdefault("dev", True)
     ch.setdefault("release", True)
@@ -118,6 +131,10 @@ def check(c):
             e(f"device.{k} must be lower case letters and digits")
     if not re.fullmatch(r"[a-z0-9]+", d.get("soc", "")):
         e("device.soc must be lower case letters and digits")
+    if not re.fullmatch(r"https://[^\s]+", c["debug_tool"]["remote"]):
+        e("debug_tool.remote must be an https URL")
+    if not isinstance(c["debug_tool"]["ask"], bool):
+        e("debug_tool.ask must be true or false")
     if d.get("arch") != "aarch64":
         e("device.arch: only aarch64 is supported")
     if d.get("status") not in STATUSES:

@@ -1,0 +1,5 @@
+# The installer's lib/*.sh and device.sh are sourced by scripts/installer/setup:
+# variables set in one file are used in another (SC2034), and functions take
+# optional arguments (SC2120). tests/installer passes empty environment values
+# on purpose (VAR= cmd, SC1007).
+disable=SC2034,SC2120,SC1007

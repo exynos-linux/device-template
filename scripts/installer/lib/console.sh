@@ -63,7 +63,7 @@ declare -gA PART_DEV=() PART_BYTES=()
 read_partitions() {
 	local n ue name sz
 	PART_DEV=() PART_BYTES=()
-	for n in $(con_cmd "ls /sys/class/block" | tr -d '\r' | grep -E "^$MAIN_PART_PREFIX[0-9]+\$" | sort -V); do
+	for n in $(con_cmd "ls /sys/class/block" | tr -d '\r' | grep -E "^${MAIN_PART_PREFIX}[0-9]+\$" | sort -V); do
 		ue=$(con_cmd "cat /sys/class/block/$n/uevent")
 		name=$(printf '%s\n' "$ue" | sed -n 's/^PARTNAME=//p' | tr -d '\r' | tr '[:upper:]' '[:lower:]')
 		[ -n "$name" ] || continue
