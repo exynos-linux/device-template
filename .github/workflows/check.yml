@@ -38,9 +38,23 @@ jobs:
         run: |
           git ls-files -- '*.py' ':!bootchain/u-boot' ':!bootchain/uniLoader' | xargs -r python3 -m py_compile
           for f in ci/pages scripts/config scripts/init-device scripts/aport-checksum; do python3 -m py_compile "$f"; done
-      - name: Installer tests
-        run: bash tests/installer/run.sh
       - name: No unfilled template values in a port
         run: |
           [ "$(scripts/config get project.template)" = true ] && exit 0
           ! git grep -nE '@(VENDOR|CODENAME|DEVICE_ID|SOC|MODEL|DEVICE_NAME)@' -- ':!docs/PORTING.md' ':!scripts/init-device'
+
+  # the installer's offline suite needs the Android image tools (mkbootimg,
+  # avbtool, lpmake, simg2img): Fedora's android-tools has them all
+  installer:
+    runs-on: ubuntu-24.04
+    container: fedora:latest
+    steps:
+      - name: Tools
+        run: |
+          dnf install -yq git android-tools dosfstools util-linux mtools zstd lz4 \
+            gnupg2 python3 e2fsprogs which findutils diffutils procps-ng
+      - uses: actions/checkout@v5
+      - name: Installer tests
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          bash tests/installer/run.sh
