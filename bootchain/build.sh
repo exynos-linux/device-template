@@ -49,7 +49,21 @@ rm -rf "$K"; mkdir -p "$K"
 if [ -n "${LINUX_GIT:-}" ]; then
 	git -C "$LINUX_GIT" archive "$KBASE" | tar -x -C "$K"
 else
-	curl -fsSL "https://github.com/torvalds/linux/archive/$KBASE.tar.gz" | tar -xz -C "$K" --strip-components=1
+	t=$W/linux-$KBASE.tar.gz
+	# the repo's own "sources" release first: GitHub answers anonymous
+	# archive downloads from shared runner IPs with 429; else the archive,
+	# authenticated (GH_TOKEN in CI), with retries
+	if [ -n "${GITHUB_REPOSITORY:-}" ] &&
+		gh release download sources -R "$GITHUB_REPOSITORY" -D "$W" -p "linux-$KBASE.tar.gz" 2>/dev/null; then
+		:
+	else for i in 1 2 3 4 5; do
+		curl -fsSL --retry 3 --retry-delay 20 ${GH_TOKEN:+-H "Authorization: Bearer $GH_TOKEN"} \
+			-o "$t" "https://github.com/torvalds/linux/archive/$KBASE.tar.gz" && break
+		[ "$i" = 5 ] && { echo "cannot download Linux $KBASE" >&2; exit 1; }
+		echo "download attempt $i failed, waiting $((i * 60)) s" >&2; sleep $((i * 60))
+	done; fi
+	tar -xzf "$t" -C "$K" --strip-components=1
+	rm -f "$t"
 fi
 patch -d "$K" -p1 -s --no-backup-if-mismatch < "$KPATCH"
 
