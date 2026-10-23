@@ -67,6 +67,21 @@ What the installer checks on stock Android.
 | `userdata_f2fs_options` | string, ≤ 5 words | `mkfs.f2fs` options that recreate stock userdata for `restore-android`; empty = refused |
 | `userdata_f2fs_features` | hex | the stock f2fs superblock feature word, e.g. `0x499`; set together with the options |
 
+## [firmware]
+
+Where the firmware tools keep Samsung's files on a developer PC
+([FIRMWARE.md](FIRMWARE.md)). Paths are relative to the repo and must be
+gitignored: `scripts/config check` fails on one git would commit.
+
+| Key | Type | Meaning |
+|---|---|---|
+| `dir` | path | the root, default `firmware` (in `.gitignore`) |
+| `snapshot_dir` | derived | `<dir>/snapshot`: `scripts/firmware-snapshot` (the running Android, over adb) |
+| `stock_dir` | derived | `<dir>/stock`: `scripts/firmware-extract` (a stock firmware package) |
+| `re_dir` | derived | `<dir>/re`: `scripts/firmware-decompile` (REA + Ghidra output) |
+| `snapshot_partitions` | list | partitions (by-name) `firmware-snapshot --root` reads, read-only; identity and key partitions (`efs`, `sec_efs`, `persistent`, `param`, ...) are refused |
+| `extract_partitions` | list | logical partitions `firmware-extract` takes out of `super.img` |
+
 ## [kernel]
 
 | Key | Type | Meaning |

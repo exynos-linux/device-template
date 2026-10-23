@@ -92,6 +92,20 @@ class Config(unittest.TestCase):
         self.assertEqual(run("get", "ui.gnome.title").stdout.strip(), "GNOME")
         self.assertNotEqual(run("get", "no.such.key").returncode, 0)
 
+    def test_firmware(self):
+        c = json.loads(run("json", text=port()).stdout)["firmware"]
+        self.assertEqual((c["snapshot_dir"], c["stock_dir"], c["re_dir"]),
+                         ("firmware/snapshot", "firmware/stock", "firmware/re"))
+        # Samsung's files: only into a directory git ignores
+        r = run("check", text=port(**{'dir = "firmware"': 'dir = "docs"'}))
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("not gitignored", r.stderr)
+        r = run("check", text=port(**{'re_dir = ""': 're_dir = "../elsewhere"'}))
+        self.assertIn("firmware.re_dir must be a path inside the repo", r.stderr)
+        # identity partitions are never read
+        r = run("check", text=port(**{'snapshot_partitions = ["boot"': 'snapshot_partitions = ["efs_a", "boot"'}))
+        self.assertIn("efs_a holds identity", r.stderr)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)

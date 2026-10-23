@@ -11,6 +11,8 @@ README.md  LICENSE  CLAUDE.md
 .claude/
   rules/                  rules for coding agents, loaded with CLAUDE.md
   skills/build-loop/      the build, flash and test loop, as a skill
+  skills/new-device/      a new port: research, firmware snapshot, the first docs
+  skills/firmware-re/     stock firmware facts and reverse engineering
 .github/workflows/
   check.yml               config, shell, Python and installer tests (every push / PR)
   images.yml              postmarketOS watcher + image builds + publishing
@@ -31,6 +33,10 @@ scripts/
   kernel-export           the kernel branch -> the kernel aport
   aport-checksum          sha512sums= without abuild
   pmos-verify             record a device-verified export (release channels)
+  firmware-snapshot       the stock Android's hardware facts + vendor files, over adb
+  firmware-extract        a stock firmware package -> images, DTs, vendor trees
+  firmware-decompile      REA + Ghidra on chosen vendor binaries (docs/FIRMWARE.md)
+  firmware-tool           their helpers (redaction, DTB carving, summaries, targets)
   installer/              the installer (setup, lib/, py/, udev/, device.sh hooks)
 pmos/
   aports/BUILD            what the images need from us
@@ -43,16 +49,19 @@ pmos/
 bootchain/                BOOT payload: build.sh, the vendored u-boot/ and uniLoader/
 initramfs/                bring-up Linux init (nolibc), optional
 docs/                     this, CONFIG, PORTING, RELEASES, INSTALL, STATUS,
-                          HARDWARE, TESTPLAN, AGENT-HANDOFF
+                          HARDWARE, PLAN, FIRMWARE, TESTPLAN, AGENT-HANDOFF
+  re/                     reverse engineering notes, our own words (re/README.md)
 tests/
   config/                 scripts/config tests
   installer/              offline installer tests (mock tablet, mock server)
+  firmware/               firmware tools tests (mock adb, synthetic images)
 ```
 
 Not committed (`.gitignore`): `src/` (kernel, U-Boot, loader clones; the
 kernel branch is exported with `scripts/kernel-export`), `build/` (work
 trees, packages, images, ccache, `build/work/build.lock`), `firmware/`
-(vendor firmware and stock images: Samsung's, never published).
+(vendor firmware, stock images, device snapshots, decompiled code:
+Samsung's or private, never published; config.toml `[firmware]`).
 
 ## Where things are decided
 

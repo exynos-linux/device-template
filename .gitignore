@@ -2,9 +2,15 @@
 /src/
 # build output (work trees, packages, images, ccache, locks)
 /build/
-# vendor firmware, stock images, decrypted files, keys: proprietary or
-# private, never commit
+# vendor firmware, stock images, decrypted files, keys, device snapshots
+# and decompiled code (scripts/firmware-*, config.toml [firmware]):
+# proprietary or private, never commit
 /firmware/
+# Ghidra projects and REA snapshots, should one land anywhere else
+*.gpr
+*.rep/
+*.gzf
+*.snap
 *.asc.secret
 signing-key.asc
 # installer state and logs on a developer PC

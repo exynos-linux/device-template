@@ -48,12 +48,26 @@ afternoon; the kernel work after that is the real port.
 
 ## 2. Hardware map
 
-Fill `docs/HARDWARE.md` from the stock firmware: the stock kernel's DT
-(`dtc -I dtb` on the boot image's DTB/DTBO), `/proc/iomem`, `lsmod`,
-`/vendor/firmware`, the partition table (`ls -l /dev/block/by-name`), the
-PIT (`heimdall print-pit`). Samsung's GPL kernel source for the model
-(opensource.samsung.com) is the driver reference. Never commit Samsung
-binaries.
+With Claude Code, the `new-device` skill does this step and the docs
+after it: it asks which device, researches it with parallel agents,
+offers the firmware snapshot and decompilation below, and writes
+`docs/HARDWARE.md`, `docs/PLAN.md`, `docs/STATUS.md`, the README and the
+handoff.
+
+By hand ([FIRMWARE.md](FIRMWARE.md)):
+
+- `scripts/firmware-snapshot run` with the device on USB debugging:
+  props, partitions, block size, buses, sensors, the vendor tree;
+  `--root` adds the live DT, clocks and pins if the device is rooted.
+- `scripts/firmware-extract PACKAGE` on the stock firmware: every DTB and
+  DTBO as `.dts`, the stock kernel's config, the vendor trees.
+- `scripts/firmware-decompile` (REA + Ghidra) for what only the vendor
+  blobs know; notes go to `docs/re/` in our own words.
+
+Fill `docs/HARDWARE.md` from their `SUMMARY.md` files and the `.dts`
+files, with a source per row, plus the PIT (`heimdall print-pit`).
+Samsung's GPL kernel source for the model (opensource.samsung.com) is the
+driver reference. Never commit Samsung binaries or decompiled code.
 
 ## 3. Bring-up Linux
 

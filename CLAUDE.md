@@ -14,8 +14,9 @@ and the device packages; the UIs and the rest of the OS come unchanged from
 postmarketOS, rebuilt automatically when postmarketOS publishes.
 
 Read first: `docs/AGENT-HANDOFF.md` (current state), `docs/STATUS.md`
-(what works, strictly), `docs/STRUCTURE.md` (where everything is),
-`config.toml` (the port's public configuration).
+(what works, strictly), `docs/PLAN.md` (what comes next),
+`docs/STRUCTURE.md` (where everything is), `config.toml` (the port's
+public configuration). A new port starts with the `new-device` skill.
 
 ## Commands
 
@@ -25,6 +26,9 @@ Read first: `docs/AGENT-HANDOFF.md` (current state), `docs/STATUS.md`
 - `scripts/aport-checksum <aport-dir>`: after editing an aport (and bump pkgrel)
 - `python3 -I tests/config/test_config.py`, `bash tests/installer/run.sh`: offline tests
 - `./setup.sh doctor` / `status`: the installer's view of this PC and the device
+- `scripts/firmware-snapshot`, `scripts/firmware-extract`, `scripts/firmware-decompile`:
+  stock firmware facts and reverse engineering, owner's yes first (docs/FIRMWARE.md,
+  the `firmware-re` skill); `bash tests/firmware/run.sh`: their offline tests
 
 ## Rules
 
@@ -33,3 +37,4 @@ Read first: `docs/AGENT-HANDOFF.md` (current state), `docs/STATUS.md`
 @.claude/rules/builds.md
 @.claude/rules/releases.md
 @.claude/rules/code.md
+@.claude/rules/firmware.md

@@ -37,7 +37,9 @@ jobs:
       - name: Python syntax
         run: |
           git ls-files -- '*.py' ':!bootchain/u-boot' ':!bootchain/uniLoader' | xargs -r python3 -m py_compile
-          for f in ci/pages scripts/config scripts/init-device scripts/aport-checksum; do python3 -m py_compile "$f"; done
+          for f in ci/pages scripts/config scripts/init-device scripts/aport-checksum scripts/firmware-tool; do python3 -m py_compile "$f"; done
+      - name: Firmware tools tests
+        run: bash tests/firmware/run.sh
       - name: No unfilled template values in a port
         run: |
           [ "$(scripts/config get project.template)" = true ] && exit 0
