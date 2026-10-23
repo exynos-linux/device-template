@@ -6,7 +6,9 @@ description: Report where this exynos-linux device port stands, as one easy-to-s
 # Port status (/status)
 
 Read-only: no builds, no device access beyond reading what is already
-logged, no edits, no commits. The report is built from evidence, and the
+logged, no edits, no commits. A port older than the template may keep
+these files elsewhere (PLAN.md or HARDWARE.md at the top level, a
+coordination doc): its CLAUDE.md says where. The report is built from evidence, and the
 docs are checked against it: a doc that disagrees with git, CI or the test
 logs is itself a finding.
 

@@ -35,7 +35,8 @@ why it is first.
 
 ## 3. Work it
 
-- Follow the `build-loop` skill: change in `src/linux` or the aports,
+- Follow the port's build loop skill (`build-loop`, or the one its
+  CLAUDE.md names): change in `src/linux` or the aports,
   module-level tests in the bring-up Linux, `scripts/build-image`, A/B
   update, test on the device per `docs/TESTPLAN.md`, logs in
   `logs/test-runs/<date>-<what>/`.
