@@ -201,7 +201,7 @@ target() { # NAME -> f (path) and x (extra args) from targets.txt
 search() {
 	guard
 	local n=${1:?NAME} pat=${2:?REGEX} kind=procedures f x
-	[ "${3:-}" = strings ] && kind=strings
+	[ "${3:-}" = strings ] && kind="strings"
 	target "$n"
 	# shellcheck disable=SC2086
 	$LOW "$REA" search "$f" --pattern="$pat" --kind $kind --mode regex --provider ghidra \
